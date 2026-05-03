@@ -9,4 +9,4 @@ services:
       - key: PYTHON_VERSION
         value: 3.11.11
       - key: BACKEND_CORS_ORIGINS
-        value: https://your-vercel-app.vercel.app
+        value: https://resume-screening-ml-five.vercel.app

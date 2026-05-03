@@ -309,13 +309,13 @@ Set this environment variable in Render after the Vercel frontend is deployed:
 
 ```text
 PYTHON_VERSION=3.11.11
-BACKEND_CORS_ORIGINS=https://your-vercel-app.vercel.app
+BACKEND_CORS_ORIGINS=https://resume-screening-ml-five.vercel.app
 ```
 
 For local + deployed frontend access, use a comma-separated value:
 
 ```text
-BACKEND_CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,https://your-vercel-app.vercel.app
+BACKEND_CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,https://resume-screening-ml-five.vercel.app
 ```
 
 Health check:
