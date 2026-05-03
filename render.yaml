@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: resume-screening-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: BACKEND_CORS_ORIGINS
+        value: https://your-vercel-app.vercel.app
