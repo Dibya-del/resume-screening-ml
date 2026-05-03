@@ -31,6 +31,16 @@ app.add_middleware(
 app.include_router(router)
 
 
+@app.get("/")
+def root() -> dict[str, str]:
+    return {
+        "status": "ok",
+        "service": "resume-screening-api",
+        "health": "/health",
+        "docs": "/docs",
+    }
+
+
 @app.get("/health")
 def health_check() -> dict[str, str]:
     return {"status": "ok"}
