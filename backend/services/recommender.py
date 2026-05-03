@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass
 
 from services.matching_model import predict_match_score
 from services.model import predict_role
+from services.preprocessing import basic_clean_text
 from services.screening_model import predict_screening
 from services.skills import calculate_skill_gap, skills_to_text
 
@@ -50,6 +51,48 @@ def normalize_role(role: str) -> str:
     return role.strip().lower().replace("-", " ")
 
 
+def lexical_similarity(left: str, right: str) -> float:
+    left_tokens = set(basic_clean_text(left).split())
+    right_tokens = set(basic_clean_text(right).split())
+    if not left_tokens or not right_tokens:
+        return 0.0
+    return len(left_tokens.intersection(right_tokens)) / len(left_tokens.union(right_tokens))
+
+
+def fallback_role_predictions(skill_gap) -> list[dict[str, float | str]]:
+    if {"machine learning", "deep learning", "nlp", "scikit learn"}.intersection(skill_gap.resume_skills):
+        return [{"role": "Data Science", "confidence": 0.55}]
+    if {"react", "javascript", "typescript", "html", "css"}.intersection(skill_gap.resume_skills):
+        return [{"role": "Web Developer", "confidence": 0.55}]
+    if {"aws", "docker", "kubernetes", "ci cd"}.intersection(skill_gap.resume_skills):
+        return [{"role": "DevOps Engineer", "confidence": 0.55}]
+    return [{"role": "General", "confidence": 0.35}]
+
+
+def fallback_match_score(resume_text: str, job_text: str, skill_match_score: float) -> dict[str, float | int | str]:
+    probability = round((lexical_similarity(resume_text, job_text) * 0.4) + (skill_match_score * 0.6), 4)
+    prediction = int(probability >= 0.45)
+    return {
+        "match_label": prediction,
+        "match_probability": probability,
+        "decision": "match" if prediction else "review",
+    }
+
+
+def fallback_screening_score(skill_match_score: float, experience_years: float, projects_count: int) -> dict[str, object]:
+    experience_component = min(max(experience_years, 0) / 5, 1) * 20
+    project_component = min(max(projects_count, 0) / 4, 1) * 10
+    ai_score = round((skill_match_score * 70) + experience_component + project_component, 2)
+    hire_probability = round(min(max(ai_score / 100, 0), 1), 4)
+    return {
+        "decision_label": int(hire_probability >= 0.5),
+        "decision": "Hire" if hire_probability >= 0.5 else "Review",
+        "hire_probability": hire_probability,
+        "ai_score": ai_score,
+        "extracted_skills": [],
+    }
+
+
 def infer_experience_years(resume_text: str) -> float:
     text = resume_text.lower()
     import re
@@ -71,22 +114,33 @@ def recommend_from_resume_and_job(
 ) -> HybridRecommendation:
     active_weights = weights or DEFAULT_WEIGHTS
 
-    role_predictions = predict_role(resume_text, top_k=5)
-    top_role = str(role_predictions[0]["role"]) if role_predictions else "unknown"
-    role_confidence = float(role_predictions[0]["confidence"]) if role_predictions else 0.0
-
-    match_result = predict_match_score(resume_text, job_text)
     skill_gap = calculate_skill_gap(resume_text, job_text)
 
     inferred_experience = infer_experience_years(resume_text) if experience_years is None else experience_years
-    screening_result = predict_screening(
-        skills=skills_to_text(skill_gap.resume_skills),
-        experience_years=inferred_experience,
-        education=education,
-        certifications=certifications,
-        job_role=normalize_role(top_role),
-        projects_count=projects_count,
-    )
+
+    try:
+        role_predictions = predict_role(resume_text, top_k=5)
+    except Exception:
+        role_predictions = fallback_role_predictions(skill_gap)
+    top_role = str(role_predictions[0]["role"]) if role_predictions else "unknown"
+    role_confidence = float(role_predictions[0]["confidence"]) if role_predictions else 0.0
+
+    try:
+        match_result = predict_match_score(resume_text, job_text)
+    except Exception:
+        match_result = fallback_match_score(resume_text, job_text, skill_gap.skill_match_score)
+
+    try:
+        screening_result = predict_screening(
+            skills=skills_to_text(skill_gap.resume_skills),
+            experience_years=inferred_experience,
+            education=education,
+            certifications=certifications,
+            job_role=normalize_role(top_role),
+            projects_count=projects_count,
+        )
+    except Exception:
+        screening_result = fallback_screening_score(skill_gap.skill_match_score, inferred_experience, projects_count)
 
     match_probability = float(match_result["match_probability"])
     skill_match_score = float(skill_gap.skill_match_score)
